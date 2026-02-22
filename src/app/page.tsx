@@ -40,6 +40,7 @@ const item: Variants = {
 };
 
 export default function DashboardPage() {
+  const [nickname] = useLocalStorage('uthmhub-nickname', '');
   const [semesters] = useLocalStorage<Semester[]>('uthmhub-semesters', []);
   const [streak] = useLocalStorage<StudyStreak>('uthmhub-streak', {
     currentStreak: 0,
@@ -68,7 +69,7 @@ export default function DashboardPage() {
       <motion.div variants={item} className="mb-8">
         <p className="text-sm text-white/40 uppercase tracking-widest mb-1">Dashboard</p>
         <h1 className="text-3xl font-bold text-white">
-          Welcome back <span className="gradient-text">Student</span>
+          Welcome back <span className="gradient-text">{nickname || 'Student'}</span>
         </h1>
       </motion.div>
 
