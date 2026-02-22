@@ -53,6 +53,12 @@ export default function CalculatorPage() {
     const [editingSemName, setEditingSemName] = useState<string | null>(null);
     const [editName, setEditName] = useState('');
 
+    // Inline edit subject
+    const [editingSubId, setEditingSubId] = useState<string | null>(null);
+    const [eCode, setECode] = useState('');
+    const [eName, setEName] = useState('');
+    const [eCredit, setECredit] = useState(3);
+
     const [isOcrLoading, setIsOcrLoading] = useState(false);
     const [ocrProgress, setOcrProgress] = useState(0);
 
@@ -129,6 +135,20 @@ export default function CalculatorPage() {
         );
     }
 
+    function saveEditSubject(semId: string, subId: string) {
+        setSemesters(
+            semesters.map((s) => {
+                if (s.id !== semId) return s;
+                const newSubjects = s.subjects.map((sub) => {
+                    if (sub.id !== subId) return sub;
+                    return { ...sub, code: eCode || 'SUB', name: eName || 'Unknown', creditHour: eCredit };
+                });
+                return { ...s, subjects: newSubjects, gpa: calculateGPA(newSubjects) };
+            })
+        );
+        setEditingSubId(null);
+    }
+
     async function handleScreenshotUpload(e: React.ChangeEvent<HTMLInputElement>) {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -149,28 +169,27 @@ export default function CalculatorPage() {
             const lines = text.split('\n');
             const parsedSubjects: Subject[] = [];
 
+            let unknownCount = 1;
             for (const line of lines) {
+                // Ignore headers
+                if (line.match(/GRADE|STATUS|ASSESSMENT|SYSTEM|LETTER/i)) continue;
+
                 const codeMatch = line.match(/([a-zA-Z]{3,4}\d{4,5})/);
+                const gradeMatch = line.match(/\b(A\+|A|A-|B\+|B|B-|C\+|C|C-|D\+|D|D-|F)\b/i);
+
                 if (codeMatch) {
                     const code = codeMatch[1].toUpperCase();
-
-                    // Match Grade (A+, A, A-, B+, B, B-, C+, C, C-, D+, D, D-, F)
-                    // Must be preceded and followed by word boundaries/spaces
-                    const gradeMatch = line.match(/\b(A\+|A|A-|B\+|B|B-|C\+|C|C-|D\+|D|D-|F)\b/i);
                     const grade = gradeMatch ? gradeMatch[1].toUpperCase() : null;
 
                     const afterCode = line.substring(codeMatch.index! + code.length).trim();
                     const nameMatch = afterCode.match(/^([a-zA-Z\s&\-,\(\)]+)/);
                     let name = nameMatch ? nameMatch[1].trim() : 'Unknown Subject';
 
-                    // Clean out common OCR noise
                     name = name.replace(/DT NORMAL/ig, '').replace(/DT/ig, '').replace(/NORMAL/ig, '').replace(/PC/ig, '').replace(/NA/ig, '').trim();
 
-                    // Extract numbers to find credit
                     const numbers = afterCode.match(/\b\d+(?:\.\d+)?\b/g);
-                    let credit = 3; // default fallback
+                    let credit = 3;
                     if (numbers && numbers.length >= 2) {
-                        // Position 0 = section, Position 1 = credit
                         const maybeCredit = parseInt(numbers[1]);
                         if (maybeCredit >= 1 && maybeCredit <= 6) {
                             credit = maybeCredit;
@@ -187,6 +206,17 @@ export default function CalculatorPage() {
                             pointValue: getPointFromGrade(grade),
                         });
                     }
+                } else if (gradeMatch && line.match(/PASS|FAIL|PC(?!\w)|NA/i)) {
+                    // Mobile specific fallback
+                    const grade = gradeMatch[1].toUpperCase();
+                    parsedSubjects.push({
+                        id: generateId(),
+                        code: `???${unknownCount++}`,
+                        name: 'Tap edit icon \u2192',
+                        creditHour: 3,
+                        grade,
+                        pointValue: getPointFromGrade(grade),
+                    });
                 }
             }
 
@@ -360,32 +390,60 @@ export default function CalculatorPage() {
                                                         <span className="col-span-1" />
                                                     </div>
                                                     {sem.subjects.map((sub) => (
-                                                        <div
-                                                            key={sub.id}
-                                                            className="grid grid-cols-12 gap-2 items-center p-3 rounded-xl bg-white/[0.02] border border-white/5 text-sm"
-                                                        >
-                                                            <span className="col-span-2 font-mono text-white/60">{sub.code}</span>
-                                                            <span className="col-span-3 text-white/80 truncate">{sub.name}</span>
-                                                            <span className="col-span-2 text-center text-white/60">{sub.creditHour}</span>
-                                                            <span className="col-span-2 text-center">
-                                                                <span className="inline-block px-2 py-0.5 rounded-md text-xs font-semibold"
-                                                                    style={{
-                                                                        background: sub.pointValue >= 3.67 ? 'rgba(34,197,94,0.15)' : sub.pointValue >= 2.0 ? 'rgba(59,130,246,0.15)' : 'rgba(239,68,68,0.15)',
-                                                                        color: sub.pointValue >= 3.67 ? '#22c55e' : sub.pointValue >= 2.0 ? '#3b82f6' : '#ef4444',
-                                                                    }}
-                                                                >
-                                                                    {sub.grade}
-                                                                </span>
-                                                            </span>
-                                                            <span className="col-span-2 text-center text-white/60">{sub.pointValue.toFixed(2)}</span>
-                                                            <span className="col-span-1 text-right">
-                                                                <button
-                                                                    onClick={() => removeSubject(sem.id, sub.id)}
-                                                                    className="text-white/15 hover:text-red-400 transition-colors"
-                                                                >
-                                                                    <Trash2 size={13} />
-                                                                </button>
-                                                            </span>
+                                                        <div key={sub.id}>
+                                                            {editingSubId === sub.id ? (
+                                                                <div className="grid grid-cols-12 gap-2 items-center p-2 rounded-xl bg-white/[0.05] border border-[var(--accent-primary)] text-sm mb-1">
+                                                                    <input className="col-span-2 input-glass px-2 py-1 text-xs" value={eCode} onChange={e => setECode(e.target.value)} placeholder="Code" autoFocus />
+                                                                    <input className="col-span-3 input-glass px-2 py-1 text-xs" value={eName} onChange={e => setEName(e.target.value)} placeholder="Name" />
+                                                                    <input type="number" min={1} max={6} className="col-span-2 input-glass px-2 py-1 text-xs text-center" value={eCredit} onChange={e => setECredit(Number(e.target.value))} />
+                                                                    <span className="col-span-2 text-center text-white/50 bg-black/20 rounded py-1">{sub.grade}</span>
+                                                                    <span className="col-span-2 text-center text-white/50">{sub.pointValue.toFixed(2)}</span>
+                                                                    <span className="col-span-1 text-right flex justify-end gap-1.5">
+                                                                        <button onClick={() => saveEditSubject(sem.id, sub.id)} className="text-green-400 hover:text-green-300">
+                                                                            <Check size={14} />
+                                                                        </button>
+                                                                        <button onClick={() => setEditingSubId(null)} className="text-red-400 hover:text-red-300">
+                                                                            <X size={14} />
+                                                                        </button>
+                                                                    </span>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="grid grid-cols-12 gap-2 items-center p-3 rounded-xl bg-white/[0.02] border border-white/5 text-sm mb-1">
+                                                                    <span className={`col-span-2 font-mono ${sub.code.startsWith('???') ? 'text-yellow-400/80 animate-pulse' : 'text-white/60'}`}>{sub.code}</span>
+                                                                    <span className={`col-span-3 truncate ${sub.name.startsWith('Tap edit') ? 'text-white/40 italic' : 'text-white/80'}`}>{sub.name}</span>
+                                                                    <span className="col-span-2 text-center text-white/60">{sub.creditHour}</span>
+                                                                    <span className="col-span-2 text-center">
+                                                                        <span className="inline-block px-2 py-0.5 rounded-md text-xs font-semibold"
+                                                                            style={{
+                                                                                background: sub.pointValue >= 3.67 ? 'rgba(34,197,94,0.15)' : sub.pointValue >= 2.0 ? 'rgba(59,130,246,0.15)' : 'rgba(239,68,68,0.15)',
+                                                                                color: sub.pointValue >= 3.67 ? '#22c55e' : sub.pointValue >= 2.0 ? '#3b82f6' : '#ef4444',
+                                                                            }}
+                                                                        >
+                                                                            {sub.grade}
+                                                                        </span>
+                                                                    </span>
+                                                                    <span className="col-span-2 text-center text-white/60">{sub.pointValue.toFixed(2)}</span>
+                                                                    <span className="col-span-1 text-right flex justify-end gap-2">
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                setEditingSubId(sub.id);
+                                                                                setECode(sub.code.startsWith('???') ? '' : sub.code);
+                                                                                setEName(sub.name.startsWith('Tap edit') ? '' : sub.name);
+                                                                                setECredit(sub.creditHour);
+                                                                            }}
+                                                                            className="text-white/20 hover:text-white/60 transition-colors"
+                                                                        >
+                                                                            <Edit3 size={13} />
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => removeSubject(sem.id, sub.id)}
+                                                                            className="text-white/15 hover:text-red-400 transition-colors"
+                                                                        >
+                                                                            <Trash2 size={13} />
+                                                                        </button>
+                                                                    </span>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     ))}
                                                 </div>
