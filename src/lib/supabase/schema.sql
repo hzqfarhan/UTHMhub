@@ -9,7 +9,7 @@
 -- ==========================================
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  nickname TEXT,
+  name TEXT,
   email TEXT,
   avatar_url TEXT,                -- profile picture URL (Supabase Storage)
   faculty TEXT,
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE OR REPLACE FUNCTION handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.users (id, email, nickname, auth_provider)
+  INSERT INTO public.users (id, email, name, auth_provider)
   VALUES (
     NEW.id,
     NEW.email,
@@ -151,7 +151,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_study_totals
 CREATE OR REPLACE VIEW leaderboard_today AS
 SELECT
   u.id AS user_id,
-  u.nickname,
+  u.name AS nickname,
   u.avatar_url,
   u.is_online,
   COALESCE(SUM(s.duration_seconds), 0) AS today_seconds,
@@ -161,14 +161,14 @@ LEFT JOIN study_sessions s
   ON s.user_id = u.id
   AND DATE(s.started_at AT TIME ZONE 'Asia/Kuala_Lumpur') = CURRENT_DATE
   AND s.ended_at IS NOT NULL
-GROUP BY u.id, u.nickname, u.avatar_url, u.is_online
+GROUP BY u.id, u.name, u.avatar_url, u.is_online
 ORDER BY today_seconds DESC;
 
 -- Weekly leaderboard
 CREATE OR REPLACE VIEW leaderboard_weekly AS
 SELECT
   u.id AS user_id,
-  u.nickname,
+  u.name AS nickname,
   u.avatar_url,
   u.is_online,
   COALESCE(SUM(s.duration_seconds), 0) AS week_seconds,
@@ -178,7 +178,7 @@ LEFT JOIN study_sessions s
   ON s.user_id = u.id
   AND s.started_at >= (CURRENT_DATE - INTERVAL '7 days')
   AND s.ended_at IS NOT NULL
-GROUP BY u.id, u.nickname, u.avatar_url, u.is_online
+GROUP BY u.id, u.name, u.avatar_url, u.is_online
 ORDER BY week_seconds DESC;
 
 -- ==========================================
