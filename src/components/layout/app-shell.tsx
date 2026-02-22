@@ -11,8 +11,41 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         if (isSupabaseConfigured && supabase) {
             // Instantiate Supabase globally on mount to intercept OAuth hash fragments
-            // in the URL if the user is redirected to the root or any other page.
-            const { data: { subscription } } = supabase.auth.onAuthStateChange(() => { });
+            const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+                if (session?.user) {
+                    const userRecord = session.user;
+                    const { data } = await supabase!.from('users').select('name, avatar_url').eq('id', userRecord.id).single();
+
+                    const meta = userRecord.user_metadata || (userRecord as any).raw_user_meta_data || {};
+                    const oauthName = meta.name || meta.full_name;
+                    const oauthAvatar = meta.avatar_url || meta.picture;
+
+                    let updatedName = data?.name || '';
+                    let updatedAvatar = data?.avatar_url || '';
+                    let needsUpdate = false;
+
+                    if (oauthName && updatedName !== oauthName) {
+                        updatedName = oauthName;
+                        needsUpdate = true;
+                    }
+                    if (oauthAvatar && updatedAvatar !== oauthAvatar) {
+                        updatedAvatar = oauthAvatar;
+                        needsUpdate = true;
+                    }
+
+                    // Sync to Local Storage instantly
+                    if (updatedName && typeof window !== 'undefined') window.localStorage.setItem('uthmhub-nickname', JSON.stringify(updatedName));
+                    if (updatedAvatar && typeof window !== 'undefined') window.localStorage.setItem('uthmhub-avatar', JSON.stringify(updatedAvatar));
+
+                    // Sync to DB
+                    if (needsUpdate) {
+                        await supabase!.from('users').update({
+                            name: updatedName,
+                            avatar_url: updatedAvatar
+                        }).eq('id', userRecord.id);
+                    }
+                }
+            });
             return () => subscription.unsubscribe();
         }
     }, []);
