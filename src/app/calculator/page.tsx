@@ -166,10 +166,12 @@ export default function CalculatorPage() {
             });
 
             const text = result.data.text;
-            const lines = text.split('\n');
+            const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
             const parsedSubjects: Subject[] = [];
 
+            let currentSubject: Partial<Subject> | null = null;
             let unknownCount = 1;
+
             for (const line of lines) {
                 // Ignore headers
                 if (line.match(/GRADE|STATUS|ASSESSMENT|SYSTEM|LETTER/i)) continue;
@@ -178,36 +180,57 @@ export default function CalculatorPage() {
                 const gradeMatch = line.match(/\b(A\+|A|A-|B\+|B|B-|C\+|C|C-|D\+|D|D-|F)\b/i);
 
                 if (codeMatch) {
-                    const code = codeMatch[1].toUpperCase();
-                    const grade = gradeMatch ? gradeMatch[1].toUpperCase() : null;
+                    if (currentSubject) {
+                        if (!currentSubject.grade) {
+                            currentSubject.grade = 'A';
+                            currentSubject.pointValue = getPointFromGrade('A');
+                        }
+                        parsedSubjects.push(currentSubject as Subject);
+                    }
 
+                    const code = codeMatch[1].toUpperCase();
                     const afterCode = line.substring(codeMatch.index! + code.length).trim();
                     const nameMatch = afterCode.match(/^([a-zA-Z\s&\-,\(\)]+)/);
                     let name = nameMatch ? nameMatch[1].trim() : 'Unknown Subject';
 
-                    name = name.replace(/DT NORMAL/ig, '').replace(/DT/ig, '').replace(/NORMAL/ig, '').replace(/PC/ig, '').replace(/NA/ig, '').trim();
+                    name = name.replace(/DT NORMAL|DT|NORMAL|PC|NA/ig, '').trim();
 
                     const numbers = afterCode.match(/\b\d+(?:\.\d+)?\b/g);
                     let credit = 3;
-                    if (numbers && numbers.length >= 2) {
-                        const maybeCredit = parseInt(numbers[1]);
+                    if (numbers) {
+                        const creditIndex = numbers.length > 1 ? 1 : 0;
+                        const maybeCredit = parseInt(numbers[creditIndex]);
                         if (maybeCredit >= 1 && maybeCredit <= 6) {
                             credit = maybeCredit;
                         }
                     }
 
-                    if (grade) {
-                        parsedSubjects.push({
-                            id: generateId(),
-                            code,
-                            name: name || 'Unknown',
-                            creditHour: credit,
-                            grade,
-                            pointValue: getPointFromGrade(grade),
-                        });
+                    const grade = gradeMatch ? gradeMatch[1].toUpperCase() : null;
+
+                    currentSubject = {
+                        id: generateId(),
+                        code,
+                        name: name || 'Unknown',
+                        creditHour: credit,
+                        grade: grade || '',
+                        pointValue: grade ? getPointFromGrade(grade) : 0,
+                    };
+                } else if (currentSubject) {
+                    if (!currentSubject.grade && gradeMatch) {
+                        currentSubject.grade = gradeMatch[1].toUpperCase();
+                        currentSubject.pointValue = getPointFromGrade(currentSubject.grade);
+                    }
+                    if (currentSubject.creditHour === 3) {
+                        const numbers = line.match(/\b\d+(?:\.\d+)?\b/g);
+                        if (numbers) {
+                            const creditIndex = numbers.length > 1 ? 1 : 0;
+                            const maybeCredit = parseInt(numbers[creditIndex]);
+                            if (maybeCredit >= 1 && maybeCredit <= 6) {
+                                currentSubject.creditHour = maybeCredit;
+                            }
+                        }
                     }
                 } else if (gradeMatch && line.match(/PASS|FAIL|PC(?!\w)|NA/i)) {
-                    // Mobile specific fallback
                     const grade = gradeMatch[1].toUpperCase();
                     parsedSubjects.push({
                         id: generateId(),
@@ -218,6 +241,14 @@ export default function CalculatorPage() {
                         pointValue: getPointFromGrade(grade),
                     });
                 }
+            }
+
+            if (currentSubject) {
+                if (!currentSubject.grade) {
+                    currentSubject.grade = 'A';
+                    currentSubject.pointValue = getPointFromGrade('A');
+                }
+                parsedSubjects.push(currentSubject as Subject);
             }
 
             if (parsedSubjects.length > 0) {

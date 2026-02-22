@@ -87,7 +87,7 @@ export default function ProfilePage() {
         supabase!.auth.getSession().then(({ data: { session } }) => {
             if (session?.user) {
                 setUser(session.user);
-                fetchProfile(session.user.id);
+                fetchProfile(session.user);
             }
             setIsLoadingAuth(false);
         });
@@ -96,7 +96,7 @@ export default function ProfilePage() {
         const { data: { subscription } } = supabase!.auth.onAuthStateChange((_event, session) => {
             if (session?.user) {
                 setUser(session.user);
-                fetchProfile(session.user.id);
+                fetchProfile(session.user);
             } else {
                 setUser(null);
             }
@@ -107,13 +107,40 @@ export default function ProfilePage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    async function fetchProfile(userId: string) {
+    async function fetchProfile(userRecord: any) {
         if (!supabase) return;
-        const { data, error } = await supabase!.from('users').select('*').eq('id', userId).single();
+        const { data, error } = await supabase!.from('users').select('*').eq('id', userRecord.id).single();
         if (data) {
-            if (data.name) setNickname(data.name);
-            if (data.avatar_url) setAvatar(data.avatar_url);
-            if (data.theme) setTheme(data.theme as FacultyTheme);
+            let updatedName = data.name;
+            let updatedAvatar = data.avatar_url;
+            let themeVal = data.theme;
+            let needsUpdate = false;
+
+            // Check both standard user_metadata and raw_user_meta_data which Supabase sometimes uses depending on the OAuth flow used.
+            const meta = userRecord.user_metadata || userRecord.raw_user_meta_data || {};
+            const oauthName = meta.name || meta.full_name;
+            const oauthAvatar = meta.avatar_url || meta.picture;
+
+            // Always prioritize Google's data if it exists for this OAuth login
+            if (oauthName && updatedName !== oauthName) {
+                updatedName = oauthName;
+                needsUpdate = true;
+            }
+            if (oauthAvatar && updatedAvatar !== oauthAvatar) {
+                updatedAvatar = oauthAvatar;
+                needsUpdate = true;
+            }
+
+            if (updatedName) setNickname(updatedName);
+            if (updatedAvatar) setAvatar(updatedAvatar);
+            if (themeVal) setTheme(themeVal as FacultyTheme);
+
+            if (needsUpdate) {
+                await supabase!.from('users').update({
+                    name: updatedName,
+                    avatar_url: updatedAvatar
+                }).eq('id', userRecord.id);
+            }
         } else if (error) {
             console.error('Error fetching profile:', error);
         }
@@ -168,7 +195,7 @@ export default function ProfilePage() {
         supabase!.auth.signInWithOAuth({
             provider: provider.toLowerCase() as any,
             options: {
-                redirectTo: window.location.origin + '/profile'
+                redirectTo: 'https://uthmhub.vercel.app/auth/callback'
             }
         });
     }
@@ -176,6 +203,10 @@ export default function ProfilePage() {
     function handleSignOut() {
         if (supabase) {
             supabase!.auth.signOut();
+            // Clear local storage overrides so that standard defaults take place
+            setNickname('');
+            setAvatar(null);
+            setTheme('purple');
         }
     }
 
