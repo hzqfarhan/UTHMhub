@@ -274,8 +274,7 @@ CREATE POLICY "Users can insert own profile" ON users
 -- Leaderboard: anyone can see nickname + avatar + online status
 DROP POLICY IF EXISTS "Anyone can read leaderboard fields" ON users;
 CREATE POLICY "Anyone can read leaderboard fields" ON users
-  FOR SELECT TO authenticated
-  USING (true);
+  FOR SELECT USING (true);
 
 -- Semesters: own data only
 DROP POLICY IF EXISTS "Own semesters" ON semesters;
@@ -306,8 +305,7 @@ CREATE POLICY "Users can delete own sessions" ON study_sessions
 
 DROP POLICY IF EXISTS "Anyone can read sessions for leaderboard" ON study_sessions;
 CREATE POLICY "Anyone can read sessions for leaderboard" ON study_sessions
-  FOR SELECT TO authenticated
-  USING (true);
+  FOR SELECT USING (true);
 
 -- Pomodoro: own data only
 DROP POLICY IF EXISTS "Own pomodoro sessions" ON pomodoro_sessions;

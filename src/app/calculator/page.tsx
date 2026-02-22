@@ -11,9 +11,12 @@ import {
     Edit3,
     Check,
     X,
+    UploadCloud,
+    Loader2,
 } from 'lucide-react';
 import { useLocalStorage } from '@/hooks/use-local-storage';
 import { Semester, Subject } from '@/types';
+import Tesseract from 'tesseract.js';
 import {
     calculateGPA,
     calculateCGPA,
@@ -49,6 +52,9 @@ export default function CalculatorPage() {
 
     const [editingSemName, setEditingSemName] = useState<string | null>(null);
     const [editName, setEditName] = useState('');
+
+    const [isOcrLoading, setIsOcrLoading] = useState(false);
+    const [ocrProgress, setOcrProgress] = useState(0);
 
     const cgpa = calculateCGPA(semesters);
     const grades = getAvailableGrades();
@@ -123,6 +129,89 @@ export default function CalculatorPage() {
         );
     }
 
+    async function handleScreenshotUpload(e: React.ChangeEvent<HTMLInputElement>) {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsOcrLoading(true);
+        setOcrProgress(0);
+
+        try {
+            const result = await Tesseract.recognize(file, 'eng', {
+                logger: m => {
+                    if (m.status === 'recognizing text') {
+                        setOcrProgress(Math.floor(m.progress * 100));
+                    }
+                }
+            });
+
+            const text = result.data.text;
+            const lines = text.split('\n');
+            const parsedSubjects: Subject[] = [];
+
+            for (const line of lines) {
+                const codeMatch = line.match(/([a-zA-Z]{3,4}\d{4,5})/);
+                if (codeMatch) {
+                    const code = codeMatch[1].toUpperCase();
+
+                    // Match Grade (A+, A, A-, B+, B, B-, C+, C, C-, D+, D, D-, F)
+                    // Must be preceded and followed by word boundaries/spaces
+                    const gradeMatch = line.match(/\b(A\+|A|A-|B\+|B|B-|C\+|C|C-|D\+|D|D-|F)\b/i);
+                    const grade = gradeMatch ? gradeMatch[1].toUpperCase() : null;
+
+                    const afterCode = line.substring(codeMatch.index! + code.length).trim();
+                    const nameMatch = afterCode.match(/^([a-zA-Z\s&\-,\(\)]+)/);
+                    let name = nameMatch ? nameMatch[1].trim() : 'Unknown Subject';
+
+                    // Clean out common OCR noise
+                    name = name.replace(/DT NORMAL/ig, '').replace(/DT/ig, '').replace(/NORMAL/ig, '').replace(/PC/ig, '').replace(/NA/ig, '').trim();
+
+                    // Extract numbers to find credit
+                    const numbers = afterCode.match(/\b\d+(?:\.\d+)?\b/g);
+                    let credit = 3; // default fallback
+                    if (numbers && numbers.length >= 2) {
+                        // Position 0 = section, Position 1 = credit
+                        const maybeCredit = parseInt(numbers[1]);
+                        if (maybeCredit >= 1 && maybeCredit <= 6) {
+                            credit = maybeCredit;
+                        }
+                    }
+
+                    if (grade) {
+                        parsedSubjects.push({
+                            id: generateId(),
+                            code,
+                            name: name || 'Unknown',
+                            creditHour: credit,
+                            grade,
+                            pointValue: getPointFromGrade(grade),
+                        });
+                    }
+                }
+            }
+
+            if (parsedSubjects.length > 0) {
+                const newSem: Semester = {
+                    id: generateId(),
+                    name: `Extracted Semester ${semesters.length + 1}`,
+                    subjects: parsedSubjects,
+                    gpa: calculateGPA(parsedSubjects),
+                };
+                setSemesters([...semesters, newSem]);
+                setExpandedSem(newSem.id);
+            } else {
+                alert("Could not detect any valid subjects from the image. Please try a clearer screenshot.");
+            }
+        } catch (error) {
+            console.error('OCR Error:', error);
+            alert("An error occurred while reading the image.");
+        } finally {
+            setIsOcrLoading(false);
+            setOcrProgress(0);
+            e.target.value = ''; // Reset input
+        }
+    }
+
     return (
         <motion.div variants={container} initial="hidden" animate="show">
             {/* Header */}
@@ -140,10 +229,26 @@ export default function CalculatorPage() {
                         {semesters.length} semester{semesters.length !== 1 ? 's' : ''} · {semesters.reduce((sum, s) => sum + s.subjects.length, 0)} subjects
                     </p>
                 </div>
-                <button onClick={addSemester} className="btn-primary">
-                    <Plus size={16} />
-                    Add Semester
-                </button>
+                <div className="flex flex-col gap-2">
+                    <button onClick={addSemester} className="btn-primary text-sm whitespace-nowrap">
+                        <Plus size={16} />
+                        Add Semester
+                    </button>
+                    <label className="btn-secondary text-sm cursor-pointer whitespace-nowrap overflow-hidden relative">
+                        {isOcrLoading ? (
+                            <><Loader2 size={16} className="animate-spin" /> Scanning... {ocrProgress}%</>
+                        ) : (
+                            <><UploadCloud size={16} /> Scan SMAP</>
+                        )}
+                        <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={handleScreenshotUpload}
+                            disabled={isOcrLoading}
+                        />
+                    </label>
+                </div>
             </motion.div>
 
             {/* Semesters List */}
@@ -333,8 +438,8 @@ export default function CalculatorPage() {
                                                                     <button
                                                                         onClick={() => setNewGradeMode('grade')}
                                                                         className={`flex-1 text-xs py-2 rounded-lg transition-all ${newGradeMode === 'grade'
-                                                                                ? 'text-white'
-                                                                                : 'bg-white/5 text-white/40 hover:text-white/60'
+                                                                            ? 'text-white'
+                                                                            : 'bg-white/5 text-white/40 hover:text-white/60'
                                                                             }`}
                                                                         style={newGradeMode === 'grade' ? { background: 'var(--accent-soft)', color: 'var(--accent-primary)' } : {}}
                                                                     >
@@ -343,8 +448,8 @@ export default function CalculatorPage() {
                                                                     <button
                                                                         onClick={() => setNewGradeMode('marks')}
                                                                         className={`flex-1 text-xs py-2 rounded-lg transition-all ${newGradeMode === 'marks'
-                                                                                ? 'text-white'
-                                                                                : 'bg-white/5 text-white/40 hover:text-white/60'
+                                                                            ? 'text-white'
+                                                                            : 'bg-white/5 text-white/40 hover:text-white/60'
                                                                             }`}
                                                                         style={newGradeMode === 'marks' ? { background: 'var(--accent-soft)', color: 'var(--accent-primary)' } : {}}
                                                                     >
