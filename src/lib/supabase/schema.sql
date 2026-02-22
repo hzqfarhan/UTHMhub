@@ -259,50 +259,69 @@ ALTER TABLE study_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pomodoro_sessions ENABLE ROW LEVEL SECURITY;
 
 -- Users: own profile (read/write), all nicknames (read for leaderboard)
+DROP POLICY IF EXISTS "Users can view own profile" ON users;
 CREATE POLICY "Users can view own profile" ON users
   FOR SELECT USING (auth.uid() = id);
+
+DROP POLICY IF EXISTS "Users can update own profile" ON users;
 CREATE POLICY "Users can update own profile" ON users
   FOR UPDATE USING (auth.uid() = id);
+
+DROP POLICY IF EXISTS "Users can insert own profile" ON users;
 CREATE POLICY "Users can insert own profile" ON users
   FOR INSERT WITH CHECK (auth.uid() = id);
+
 -- Leaderboard: anyone can see nickname + avatar + online status
+DROP POLICY IF EXISTS "Anyone can read leaderboard fields" ON users;
 CREATE POLICY "Anyone can read leaderboard fields" ON users
   FOR SELECT TO authenticated
   USING (true);
 
 -- Semesters: own data only
+DROP POLICY IF EXISTS "Own semesters" ON semesters;
 CREATE POLICY "Own semesters" ON semesters
   FOR ALL USING (auth.uid() = user_id);
 
 -- Subjects: own data only
+DROP POLICY IF EXISTS "Own subjects" ON subjects;
 CREATE POLICY "Own subjects" ON subjects
   FOR ALL USING (auth.uid() = user_id);
 
 -- User Events: own data only
+DROP POLICY IF EXISTS "Own events" ON user_events;
 CREATE POLICY "Own events" ON user_events
   FOR ALL USING (auth.uid() = user_id);
 
 -- Study Sessions: own write, all read (for leaderboard)
+DROP POLICY IF EXISTS "Users can insert own sessions" ON study_sessions;
 CREATE POLICY "Users can insert own sessions" ON study_sessions
   FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can update own sessions" ON study_sessions;
 CREATE POLICY "Users can update own sessions" ON study_sessions
   FOR UPDATE USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can delete own sessions" ON study_sessions;
 CREATE POLICY "Users can delete own sessions" ON study_sessions
   FOR DELETE USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Anyone can read sessions for leaderboard" ON study_sessions;
 CREATE POLICY "Anyone can read sessions for leaderboard" ON study_sessions
   FOR SELECT TO authenticated
   USING (true);
 
 -- Pomodoro: own data only
+DROP POLICY IF EXISTS "Own pomodoro sessions" ON pomodoro_sessions;
 CREATE POLICY "Own pomodoro sessions" ON pomodoro_sessions
   FOR ALL USING (auth.uid() = user_id);
 
 -- Academic Events & Quick Links: public read
 ALTER TABLE academic_events ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Anyone can view academic events" ON academic_events;
 CREATE POLICY "Anyone can view academic events" ON academic_events
   FOR SELECT TO authenticated USING (true);
 
 ALTER TABLE quick_links ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Anyone can view quick links" ON quick_links;
 CREATE POLICY "Anyone can view quick links" ON quick_links
   FOR SELECT TO authenticated USING (true);
 
