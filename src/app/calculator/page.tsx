@@ -381,7 +381,7 @@ export default function CalculatorPage() {
                                             {/* Subject Table */}
                                             {sem.subjects.length > 0 && (
                                                 <div className="mt-4 space-y-2">
-                                                    <div className="grid grid-cols-12 gap-2 text-xs text-white/30 px-3">
+                                                    <div className="hidden sm:grid grid-cols-12 gap-2 text-xs text-white/30 px-3">
                                                         <span className="col-span-2">Code</span>
                                                         <span className="col-span-3">Name</span>
                                                         <span className="col-span-2 text-center">Credit</span>
@@ -392,56 +392,67 @@ export default function CalculatorPage() {
                                                     {sem.subjects.map((sub) => (
                                                         <div key={sub.id}>
                                                             {editingSubId === sub.id ? (
-                                                                <div className="grid grid-cols-12 gap-2 items-center p-2 rounded-xl bg-white/[0.05] border border-[var(--accent-primary)] text-sm mb-1">
-                                                                    <input className="col-span-2 input-glass px-2 py-1 text-xs" value={eCode} onChange={e => setECode(e.target.value)} placeholder="Code" autoFocus />
-                                                                    <input className="col-span-3 input-glass px-2 py-1 text-xs" value={eName} onChange={e => setEName(e.target.value)} placeholder="Name" />
-                                                                    <input type="number" min={1} max={6} className="col-span-2 input-glass px-2 py-1 text-xs text-center" value={eCredit} onChange={e => setECredit(Number(e.target.value))} />
-                                                                    <span className="col-span-2 text-center text-white/50 bg-black/20 rounded py-1">{sub.grade}</span>
-                                                                    <span className="col-span-2 text-center text-white/50">{sub.pointValue.toFixed(2)}</span>
-                                                                    <span className="col-span-1 text-right flex justify-end gap-1.5">
-                                                                        <button onClick={() => saveEditSubject(sem.id, sub.id)} className="text-green-400 hover:text-green-300">
-                                                                            <Check size={14} />
-                                                                        </button>
-                                                                        <button onClick={() => setEditingSubId(null)} className="text-red-400 hover:text-red-300">
-                                                                            <X size={14} />
-                                                                        </button>
-                                                                    </span>
+                                                                <div className="grid grid-cols-2 sm:grid-cols-12 gap-2 items-center p-3 rounded-xl bg-white/[0.05] border border-[var(--accent-primary)] text-sm mb-2">
+                                                                    <input className="col-span-1 sm:col-span-2 input-glass px-2 py-1 text-xs" value={eCode} onChange={e => setECode(e.target.value)} placeholder="Code" autoFocus />
+                                                                    <input className="col-span-1 sm:col-span-3 input-glass px-2 py-1 text-xs" value={eName} onChange={e => setEName(e.target.value)} placeholder="Name" />
+
+                                                                    <div className="col-span-2 sm:col-span-7 flex items-center justify-between sm:grid sm:grid-cols-7 gap-2">
+                                                                        <input type="number" min={1} max={6} className="sm:col-span-2 input-glass px-2 py-1 text-xs w-16 sm:w-full text-center" value={eCredit} onChange={e => setECredit(Number(e.target.value))} />
+                                                                        <span className="sm:col-span-2 text-center text-white/50 bg-black/20 rounded py-1 px-2">{sub.grade}</span>
+                                                                        <span className="sm:col-span-2 text-center text-white/50 hidden sm:block">{sub.pointValue.toFixed(2)}</span>
+                                                                        <div className="sm:col-span-1 flex justify-end gap-2">
+                                                                            <button onClick={() => saveEditSubject(sem.id, sub.id)} className="text-green-400 hover:text-green-300">
+                                                                                <Check size={16} />
+                                                                            </button>
+                                                                            <button onClick={() => setEditingSubId(null)} className="text-red-400 hover:text-red-300">
+                                                                                <X size={16} />
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
                                                                 </div>
                                                             ) : (
-                                                                <div className="grid grid-cols-12 gap-2 items-center p-3 rounded-xl bg-white/[0.02] border border-white/5 text-sm mb-1">
-                                                                    <span className={`col-span-2 font-mono ${sub.code.startsWith('???') ? 'text-yellow-400/80 animate-pulse' : 'text-white/60'}`}>{sub.code}</span>
-                                                                    <span className={`col-span-3 truncate ${sub.name.startsWith('Tap edit') ? 'text-white/40 italic' : 'text-white/80'}`}>{sub.name}</span>
-                                                                    <span className="col-span-2 text-center text-white/60">{sub.creditHour}</span>
-                                                                    <span className="col-span-2 text-center">
-                                                                        <span className="inline-block px-2 py-0.5 rounded-md text-xs font-semibold"
-                                                                            style={{
-                                                                                background: sub.pointValue >= 3.67 ? 'rgba(34,197,94,0.15)' : sub.pointValue >= 2.0 ? 'rgba(59,130,246,0.15)' : 'rgba(239,68,68,0.15)',
-                                                                                color: sub.pointValue >= 3.67 ? '#22c55e' : sub.pointValue >= 2.0 ? '#3b82f6' : '#ef4444',
-                                                                            }}
-                                                                        >
-                                                                            {sub.grade}
-                                                                        </span>
-                                                                    </span>
-                                                                    <span className="col-span-2 text-center text-white/60">{sub.pointValue.toFixed(2)}</span>
-                                                                    <span className="col-span-1 text-right flex justify-end gap-2">
-                                                                        <button
-                                                                            onClick={() => {
-                                                                                setEditingSubId(sub.id);
-                                                                                setECode(sub.code.startsWith('???') ? '' : sub.code);
-                                                                                setEName(sub.name.startsWith('Tap edit') ? '' : sub.name);
-                                                                                setECredit(sub.creditHour);
-                                                                            }}
-                                                                            className="text-white/20 hover:text-white/60 transition-colors"
-                                                                        >
-                                                                            <Edit3 size={13} />
-                                                                        </button>
-                                                                        <button
-                                                                            onClick={() => removeSubject(sem.id, sub.id)}
-                                                                            className="text-white/15 hover:text-red-400 transition-colors"
-                                                                        >
-                                                                            <Trash2 size={13} />
-                                                                        </button>
-                                                                    </span>
+                                                                <div className="flex flex-col sm:grid sm:grid-cols-12 gap-2 sm:items-center p-3 rounded-xl bg-white/[0.02] border border-white/5 text-sm mb-2">
+                                                                    <div className="flex justify-between items-start sm:col-span-5 sm:grid sm:grid-cols-5 gap-2 mb-2 sm:mb-0">
+                                                                        <span className={`sm:col-span-2 font-mono ${sub.code.startsWith('???') ? 'text-yellow-400/80 animate-pulse' : 'text-white/60'}`}>{sub.code}</span>
+                                                                        <span className={`sm:col-span-3 truncate ${sub.name.startsWith('Tap edit') ? 'text-white/40 italic' : 'text-white/80'}`}>{sub.name}</span>
+                                                                    </div>
+
+                                                                    <div className="flex items-center justify-between sm:col-span-7 sm:grid sm:grid-cols-7 gap-2">
+                                                                        <span className="sm:col-span-2 text-white/60 text-xs sm:text-sm sm:text-center shrink-0">Cr: {sub.creditHour}</span>
+
+                                                                        <div className="sm:col-span-2 sm:text-center shrink-0">
+                                                                            <span className="inline-block px-2 py-0.5 rounded-md text-xs font-semibold"
+                                                                                style={{
+                                                                                    background: sub.pointValue >= 3.67 ? 'rgba(34,197,94,0.15)' : sub.pointValue >= 2.0 ? 'rgba(59,130,246,0.15)' : 'rgba(239,68,68,0.15)',
+                                                                                    color: sub.pointValue >= 3.67 ? '#22c55e' : sub.pointValue >= 2.0 ? '#3b82f6' : '#ef4444',
+                                                                                }}
+                                                                            >
+                                                                                {sub.grade}
+                                                                            </span>
+                                                                        </div>
+
+                                                                        <span className="sm:col-span-2 text-white/60 text-xs sm:text-sm sm:text-center hidden sm:block whitespace-nowrap">{sub.pointValue.toFixed(2)} pts</span>
+
+                                                                        <div className="sm:col-span-1 flex justify-end gap-3 shrink-0">
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    setEditingSubId(sub.id);
+                                                                                    setECode(sub.code.startsWith('???') ? '' : sub.code);
+                                                                                    setEName(sub.name.startsWith('Tap edit') ? '' : sub.name);
+                                                                                    setECredit(sub.creditHour);
+                                                                                }}
+                                                                                className="text-white/20 hover:text-white/60 transition-colors"
+                                                                            >
+                                                                                <Edit3 size={15} />
+                                                                            </button>
+                                                                            <button
+                                                                                onClick={() => removeSubject(sem.id, sub.id)}
+                                                                                className="text-white/15 hover:text-red-400 transition-colors"
+                                                                            >
+                                                                                <Trash2 size={15} />
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
                                                                 </div>
                                                             )}
                                                         </div>

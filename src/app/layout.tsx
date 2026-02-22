@@ -35,6 +35,11 @@ export default function RootLayout({
       <body className={`${inter.variable} font-sans antialiased`}>
         <AppShell>{children}</AppShell>
         <ServiceWorkerRegistrar />
+
+        {/* Global Watermark */}
+        <div className="fixed bottom-2 right-3 text-[10px] text-white/20 select-none pointer-events-none z-[9999] tracking-widest font-mono">
+          hakhyun
+        </div>
       </body>
     </html>
   );
