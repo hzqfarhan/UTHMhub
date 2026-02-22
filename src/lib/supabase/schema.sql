@@ -21,6 +21,13 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Ensure columns exist in case the table was created by an older schema version
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS auth_provider TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_online BOOLEAN DEFAULT false;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ DEFAULT NOW();
+
 -- Auto-create user row on sign-up
 CREATE OR REPLACE FUNCTION handle_new_user()
 RETURNS TRIGGER AS $$
