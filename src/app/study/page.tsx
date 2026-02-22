@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence, Variants } from 'framer-motion';
+import { useState, useEffect } from 'react';
+import { motion, Variants } from 'framer-motion';
 import { Play, Pause, Square, Clock, Flame, Trophy, BookOpen } from 'lucide-react';
 import { useLocalStorage } from '@/hooks/use-local-storage';
 import Link from 'next/link';
@@ -52,8 +52,10 @@ function formatTime(totalSeconds: number): string {
 function formatTimeShort(totalSeconds: number): string {
     const hours = Math.floor(totalSeconds / 3600);
     const minutes = Math.floor((totalSeconds % 3600) / 60);
-    if (hours > 0) return `${hours}h ${minutes}m`;
-    return `${minutes}m`;
+    const seconds = totalSeconds % 60;
+    if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+    if (minutes > 0) return `${minutes}m ${seconds}s`;
+    return `${seconds}s`;
 }
 
 function getTodayKey(): string {
@@ -62,79 +64,107 @@ function getTodayKey(): string {
 
 export default function StudyPage() {
     const [studyHistory, setStudyHistory] = useLocalStorage<DailyStudyData[]>('uthmhub-study-history', []);
-    const [isStudying, setIsStudying] = useState(false);
-    const [elapsed, setElapsed] = useState(0);
-    const [selectedSubject, setSelectedSubject] = useState(SUBJECTS[0]);
-    const [sessionStart, setSessionStart] = useState<Date | null>(null);
-    const intervalRef = useRef<NodeJS.Timeout | null>(null);
-    const [nickname] = useLocalStorage('uthmhub-nickname', 'Student');
     const [user, setUser] = useState<any>(null);
+
+    // Persisted Timer State via LocalStorage so it survives navigation
+    const [isStudying, setIsStudying] = useLocalStorage('uthmhub-timer-is-studying', false);
+    const [accumulatedElapsed, setAccumulatedElapsed] = useLocalStorage('uthmhub-timer-accumulated', 0);
+    const [activeSince, setActiveSince] = useLocalStorage<number | null>('uthmhub-timer-active-since', null);
+    const [sessionStart, setSessionStart] = useLocalStorage<string | null>('uthmhub-timer-session-start', null);
+    const [selectedSubject, setSelectedSubject] = useLocalStorage('uthmhub-timer-subject', SUBJECTS[0]);
+
+    // Local Display State (updates every second for the UI)
+    const [displayElapsed, setDisplayElapsed] = useState(accumulatedElapsed);
+    const [isClient, setIsClient] = useState(false);
 
     // Get auth status
     useEffect(() => {
+        setIsClient(true);
         if (!isSupabaseConfigured || !supabase) return;
-        supabase!.auth.getSession().then(({ data: { session } }) => {
+        supabase.auth.getSession().then(({ data: { session } }) => {
             if (session?.user) setUser(session.user);
         });
-        const { data: { subscription } } = supabase!.auth.onAuthStateChange((_event, session) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             setUser(session?.user || null);
         });
         return () => subscription.unsubscribe();
     }, []);
 
-    // Get today's data
+    // Timer tick logic
+    useEffect(() => {
+        let interval: NodeJS.Timeout;
+
+        if (isStudying && activeSince) {
+            // Initial sync on mount
+            const currentSessionSeconds = Math.floor((Date.now() - activeSince) / 1000);
+            setDisplayElapsed(accumulatedElapsed + currentSessionSeconds);
+
+            interval = setInterval(() => {
+                const currentSessionSeconds = Math.floor((Date.now() - activeSince) / 1000);
+                setDisplayElapsed(accumulatedElapsed + currentSessionSeconds);
+            }, 1000);
+        } else {
+            setDisplayElapsed(accumulatedElapsed);
+        }
+
+        return () => {
+            if (interval) clearInterval(interval);
+        };
+    }, [isStudying, activeSince, accumulatedElapsed]);
+
+    // Get today's data and totals
     const todayKey = getTodayKey();
     const todayData = studyHistory.find((d) => d.date === todayKey);
-    const todayTotal = (todayData?.totalSeconds || 0) + (isStudying ? elapsed : 0);
+    const todayTotal = (todayData?.totalSeconds || 0) + (isStudying ? displayElapsed : 0);
 
-    // Week total
     const weekTotal = studyHistory
         .filter((d) => {
             const diff = (new Date().getTime() - new Date(d.date).getTime()) / (1000 * 60 * 60 * 24);
             return diff <= 7;
         })
-        .reduce((acc, d) => acc + d.totalSeconds, 0) + (isStudying ? elapsed : 0);
-
-    // Timer tick
-    useEffect(() => {
-        if (isStudying) {
-            intervalRef.current = setInterval(() => {
-                setElapsed((prev) => prev + 1);
-            }, 1000);
-        }
-        return () => {
-            if (intervalRef.current) clearInterval(intervalRef.current);
-        };
-    }, [isStudying]);
+        .reduce((acc, d) => acc + d.totalSeconds, 0) + (isStudying ? displayElapsed : 0);
 
     function startStudying() {
+        setSessionStart(new Date().toISOString());
+        setAccumulatedElapsed(0);
+        setActiveSince(Date.now());
         setIsStudying(true);
-        setElapsed(0);
-        setSessionStart(new Date());
     }
 
     function pauseStudying() {
+        if (!activeSince) return;
+        const currentSessionSeconds = Math.floor((Date.now() - activeSince) / 1000);
+        setAccumulatedElapsed(prev => prev + currentSessionSeconds);
+        setActiveSince(null);
         setIsStudying(false);
     }
 
     function resumeStudying() {
+        setActiveSince(Date.now());
         setIsStudying(true);
     }
 
     function stopStudying() {
-        if (elapsed < 10) {
-            // Don't save sessions less than 10 seconds
+        const finalSessionSeconds = isStudying && activeSince
+            ? Math.floor((Date.now() - activeSince) / 1000)
+            : 0;
+
+        const totalElapsed = accumulatedElapsed + finalSessionSeconds;
+
+        if (totalElapsed < 10) {
+            // Don't save sessions less than 10 seconds (prevents spam)
             setIsStudying(false);
-            setElapsed(0);
+            setAccumulatedElapsed(0);
+            setActiveSince(null);
             setSessionStart(null);
             return;
         }
 
         const session: StudySession = {
             id: Date.now().toString(),
-            startTime: sessionStart?.toISOString() || new Date().toISOString(),
+            startTime: sessionStart || new Date().toISOString(),
             endTime: new Date().toISOString(),
-            duration: elapsed,
+            duration: totalElapsed,
             subject: selectedSubject.name,
         };
 
@@ -145,20 +175,20 @@ export default function StudyPage() {
             setStudyHistory(
                 studyHistory.map((d) =>
                     d.date === today
-                        ? { ...d, totalSeconds: d.totalSeconds + elapsed, sessions: [...d.sessions, session] }
+                        ? { ...d, totalSeconds: d.totalSeconds + totalElapsed, sessions: [...d.sessions, session] }
                         : d
                 )
             );
         } else {
             setStudyHistory([
                 ...studyHistory,
-                { date: today, totalSeconds: elapsed, sessions: [session] },
+                { date: today, totalSeconds: totalElapsed, sessions: [session] },
             ]);
         }
 
         // Push to Supabase if logged in
         if (user && isSupabaseConfigured && supabase) {
-            supabase!.from('study_sessions').insert({
+            supabase.from('study_sessions').insert({
                 user_id: user.id,
                 subject: selectedSubject.name,
                 started_at: session.startTime,
@@ -170,7 +200,8 @@ export default function StudyPage() {
         }
 
         setIsStudying(false);
-        setElapsed(0);
+        setAccumulatedElapsed(0);
+        setActiveSince(null);
         setSessionStart(null);
     }
 
@@ -190,6 +221,8 @@ export default function StudyPage() {
             break;
         }
     }
+
+    if (!isClient) return null; // Hydration fix
 
     return (
         <motion.div variants={container} initial="hidden" animate="show">
@@ -215,7 +248,7 @@ export default function StudyPage() {
             {/* Main Timer Area */}
             <motion.div variants={item} className="flex flex-col items-center mb-10">
                 {/* Subject Selector */}
-                {!isStudying && (
+                {!isStudying && displayElapsed === 0 && (
                     <div className="flex gap-2 mb-8 flex-wrap justify-center">
                         {SUBJECTS.map((subject) => (
                             <button
@@ -271,10 +304,10 @@ export default function StudyPage() {
                             />
                         )}
                         <span className="text-5xl font-bold text-white font-mono tracking-wider">
-                            {formatTime(elapsed)}
+                            {formatTime(displayElapsed)}
                         </span>
                         <span className="text-sm text-white/30 mt-2">
-                            {isStudying ? selectedSubject.name : 'Select subject & start'}
+                            {isStudying || displayElapsed > 0 ? selectedSubject.name : 'Select subject & start'}
                         </span>
                         {todayTotal > 0 && (
                             <span className="text-xs text-white/20 mt-1">
@@ -286,7 +319,7 @@ export default function StudyPage() {
 
                 {/* Controls */}
                 <div className="flex items-center gap-4">
-                    {!isStudying && elapsed === 0 && (
+                    {!isStudying && displayElapsed === 0 && (
                         <motion.button
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.95 }}
@@ -318,7 +351,7 @@ export default function StudyPage() {
                         </>
                     )}
 
-                    {!isStudying && elapsed > 0 && (
+                    {!isStudying && displayElapsed > 0 && (
                         <>
                             <button
                                 onClick={resumeStudying}

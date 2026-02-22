@@ -23,19 +23,16 @@ interface DailyStudyData {
     sessions: { id: string; startTime: string; endTime: string; duration: number; subject: string }[];
 }
 
-// Simulated community members (fallback)
-const SIMULATED_USERS = [
-    { name: 'Aiman', avatar: '🧑‍💻', todaySeconds: 14400, weekSeconds: 72000, streak: 12, isOnline: true },
-    { name: 'Nurul', avatar: '👩‍🎓', todaySeconds: 12600, weekSeconds: 68000, streak: 8, isOnline: true },
-    { name: 'Farhan', avatar: '👨‍💻', todaySeconds: 10800, weekSeconds: 54000, streak: 15, isOnline: false },
-    { name: 'Aisyah', avatar: '👩‍🔬', todaySeconds: 9000, weekSeconds: 45000, streak: 5, isOnline: true },
-];
+// Removed SIMULATED_USERS to avoid showing placeholders
 
 function formatTime(totalSeconds: number): string {
     const hours = Math.floor(totalSeconds / 3600);
     const minutes = Math.floor((totalSeconds % 3600) / 60);
-    if (hours > 0) return `${hours}h ${minutes}m`;
-    return `${minutes}m`;
+    const seconds = totalSeconds % 60;
+
+    if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+    if (minutes > 0) return `${minutes}m ${seconds}s`;
+    return `${seconds}s`;
 }
 
 function getRankIcon(rank: number) {
@@ -137,8 +134,7 @@ export default function LeaderboardPage() {
             isImage: Boolean(avatar && (avatar.startsWith('http') || avatar.startsWith('data:'))),
         };
 
-        const others = SIMULATED_USERS.map((u) => ({ ...u, id: u.name, isMe: false, isImage: false }));
-        const combined = [...others, me];
+        const combined = [me];
         combined.sort((a, b) => b.todaySeconds - a.todaySeconds);
         return combined;
     }, [isConnected, liveLeaderboard, user?.id, nickname, avatar, myTodaySeconds, myStreak]);
@@ -283,7 +279,7 @@ export default function LeaderboardPage() {
             {!isConnected && (
                 <motion.div variants={item} className="mt-6 p-4 rounded-xl bg-white/[0.02] border border-white/5">
                     <p className="text-xs text-white/25 text-center">
-                        📊 Showing simulated peers (Guest Mode).<br />
+                        📊 Showing local Guest Mode data.<br />
                         Sign in via Profile to see live leaderboards with actual UTHM students.
                     </p>
                 </motion.div>
