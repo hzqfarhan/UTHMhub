@@ -172,12 +172,15 @@ export default function CalculatorPage() {
             let currentSubject: Partial<Subject> | null = null;
             let unknownCount = 1;
 
+            // Updated grade regex: avoids \b because \b breaks on '+' and '-' characters
+            const gradeRegex = /(^|\s)(A\+|A|A-|B\+|B|B-|C\+|C|C-|D\+|D|D-|F)(?=\s|$)/i;
+
             for (const line of lines) {
                 // Ignore headers
                 if (line.match(/GRADE|STATUS|ASSESSMENT|SYSTEM|LETTER/i)) continue;
 
                 const codeMatch = line.match(/([a-zA-Z]{3,4}\d{4,5})/);
-                const gradeMatch = line.match(/\b(A\+|A|A-|B\+|B|B-|C\+|C|C-|D\+|D|D-|F)\b/i);
+                const gradeMatch = line.match(gradeRegex);
 
                 if (codeMatch) {
                     if (currentSubject) {
@@ -195,17 +198,21 @@ export default function CalculatorPage() {
 
                     name = name.replace(/DT NORMAL|DT|NORMAL|PC|NA/ig, '').trim();
 
-                    const numbers = afterCode.match(/\b\d+(?:\.\d+)?\b/g);
+                    // Credit is usually 1-6. Since "Section" is 1, and "Credit" is 2-4, 
+                    // we pull digits and try to assume the second digit is the credit.
+                    const numbers = afterCode.match(/(^|\s)([1-6])(?=\s)/g);
                     let credit = 3;
                     if (numbers) {
-                        const creditIndex = numbers.length > 1 ? 1 : 0;
-                        const maybeCredit = parseInt(numbers[creditIndex]);
-                        if (maybeCredit >= 1 && maybeCredit <= 6) {
-                            credit = maybeCredit;
+                        const cleanNums = numbers.map(n => parseInt(n.trim()));
+                        // if we see multiple standalone numbers (like 1 and 3), the second is usually credit
+                        if (cleanNums.length > 1) {
+                            credit = cleanNums[1];
+                        } else {
+                            credit = cleanNums[0];
                         }
                     }
 
-                    const grade = gradeMatch ? gradeMatch[1].toUpperCase() : null;
+                    const grade = gradeMatch ? gradeMatch[2].toUpperCase() : null;
 
                     currentSubject = {
                         id: generateId(),
@@ -216,22 +223,22 @@ export default function CalculatorPage() {
                         pointValue: grade ? getPointFromGrade(grade) : 0,
                     };
                 } else if (currentSubject) {
+                    // Try to catch straggling grades on the next few lines
                     if (!currentSubject.grade && gradeMatch) {
-                        currentSubject.grade = gradeMatch[1].toUpperCase();
+                        currentSubject.grade = gradeMatch[2].toUpperCase();
                         currentSubject.pointValue = getPointFromGrade(currentSubject.grade);
                     }
+                    // Try to catch credit if it dropped below standalone
                     if (currentSubject.creditHour === 3) {
-                        const numbers = line.match(/\b\d+(?:\.\d+)?\b/g);
+                        const numbers = line.match(/(^|\s)([1-6])(?=\s)/g);
                         if (numbers) {
-                            const creditIndex = numbers.length > 1 ? 1 : 0;
-                            const maybeCredit = parseInt(numbers[creditIndex]);
-                            if (maybeCredit >= 1 && maybeCredit <= 6) {
-                                currentSubject.creditHour = maybeCredit;
-                            }
+                            const cleanNums = numbers.map(n => parseInt(n.trim()));
+                            currentSubject.creditHour = cleanNums.length > 1 ? cleanNums[1] : cleanNums[0];
                         }
                     }
-                } else if (gradeMatch && line.match(/PASS|FAIL|PC(?!\w)|NA/i)) {
-                    const grade = gradeMatch[1].toUpperCase();
+                } else if (gradeMatch && line.match(/PASS|FAIL|PC|NA/i)) {
+                    // Stray grade line
+                    const grade = gradeMatch[2].toUpperCase();
                     parsedSubjects.push({
                         id: generateId(),
                         code: `???${unknownCount++}`,
