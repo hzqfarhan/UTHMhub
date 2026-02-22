@@ -5,6 +5,7 @@ import { motion, AnimatePresence, Variants } from 'framer-motion';
 import { Play, Pause, Square, Clock, Flame, Trophy, BookOpen } from 'lucide-react';
 import { useLocalStorage } from '@/hooks/use-local-storage';
 import Link from 'next/link';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase/client';
 
 const container: Variants = {
     hidden: { opacity: 0 },
@@ -67,6 +68,19 @@ export default function StudyPage() {
     const [sessionStart, setSessionStart] = useState<Date | null>(null);
     const intervalRef = useRef<NodeJS.Timeout | null>(null);
     const [nickname] = useLocalStorage('uthmhub-nickname', 'Student');
+    const [user, setUser] = useState<any>(null);
+
+    // Get auth status
+    useEffect(() => {
+        if (!isSupabaseConfigured || !supabase) return;
+        supabase!.auth.getSession().then(({ data: { session } }) => {
+            if (session?.user) setUser(session.user);
+        });
+        const { data: { subscription } } = supabase!.auth.onAuthStateChange((_event, session) => {
+            setUser(session?.user || null);
+        });
+        return () => subscription.unsubscribe();
+    }, []);
 
     // Get today's data
     const todayKey = getTodayKey();
@@ -142,6 +156,19 @@ export default function StudyPage() {
             ]);
         }
 
+        // Push to Supabase if logged in
+        if (user && isSupabaseConfigured && supabase) {
+            supabase!.from('study_sessions').insert({
+                user_id: user.id,
+                subject: selectedSubject.name,
+                started_at: session.startTime,
+                ended_at: session.endTime,
+                duration_seconds: session.duration
+            }).then(({ error }) => {
+                if (error) console.error('Failed to save session to Supabase:', error);
+            });
+        }
+
         setIsStudying(false);
         setElapsed(0);
         setSessionStart(null);
@@ -195,8 +222,8 @@ export default function StudyPage() {
                                 key={subject.name}
                                 onClick={() => setSelectedSubject(subject)}
                                 className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${selectedSubject.name === subject.name
-                                        ? 'text-white scale-105'
-                                        : 'text-white/40 hover:text-white/60'
+                                    ? 'text-white scale-105'
+                                    : 'text-white/40 hover:text-white/60'
                                     }`}
                                 style={
                                     selectedSubject.name === subject.name

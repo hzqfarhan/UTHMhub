@@ -1,10 +1,11 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import { motion, Variants } from 'framer-motion';
-import { Trophy, Clock, Medal, Crown, ArrowLeft, Flame } from 'lucide-react';
+import { Trophy, Clock, Medal, Crown, ArrowLeft, Flame, User } from 'lucide-react';
 import { useLocalStorage } from '@/hooks/use-local-storage';
 import Link from 'next/link';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase/client';
 
 const container: Variants = {
     hidden: { opacity: 0 },
@@ -22,18 +23,12 @@ interface DailyStudyData {
     sessions: { id: string; startTime: string; endTime: string; duration: number; subject: string }[];
 }
 
-// Simulated community members (in a real app, this comes from Supabase)
+// Simulated community members (fallback)
 const SIMULATED_USERS = [
     { name: 'Aiman', avatar: '🧑‍💻', todaySeconds: 14400, weekSeconds: 72000, streak: 12, isOnline: true },
     { name: 'Nurul', avatar: '👩‍🎓', todaySeconds: 12600, weekSeconds: 68000, streak: 8, isOnline: true },
     { name: 'Farhan', avatar: '👨‍💻', todaySeconds: 10800, weekSeconds: 54000, streak: 15, isOnline: false },
     { name: 'Aisyah', avatar: '👩‍🔬', todaySeconds: 9000, weekSeconds: 45000, streak: 5, isOnline: true },
-    { name: 'Hafiz', avatar: '🧑‍🏫', todaySeconds: 7200, weekSeconds: 36000, streak: 3, isOnline: false },
-    { name: 'Syafiqah', avatar: '👩‍💼', todaySeconds: 5400, weekSeconds: 27000, streak: 7, isOnline: true },
-    { name: 'Danish', avatar: '🧑‍🎓', todaySeconds: 3600, weekSeconds: 18000, streak: 2, isOnline: false },
-    { name: 'Liyana', avatar: '👩‍🏫', todaySeconds: 2700, weekSeconds: 13500, streak: 4, isOnline: false },
-    { name: 'Zulkifli', avatar: '🧑‍🔧', todaySeconds: 1800, weekSeconds: 9000, streak: 1, isOnline: false },
-    { name: 'Fatimah', avatar: '👩‍⚕️', todaySeconds: 900, weekSeconds: 4500, streak: 1, isOnline: false },
 ];
 
 function formatTime(totalSeconds: number): string {
@@ -60,18 +55,54 @@ function getRankGlow(rank: number, color: string): string {
 export default function LeaderboardPage() {
     const [studyHistory] = useLocalStorage<DailyStudyData[]>('uthmhub-study-history', []);
     const [nickname] = useLocalStorage('uthmhub-nickname', 'You');
+    const [avatar] = useLocalStorage<string | null>('uthmhub-avatar', null);
+
+    const [liveLeaderboard, setLiveLeaderboard] = useState<any[]>([]);
+    const [user, setUser] = useState<any>(null);
+    const [isConnected, setIsConnected] = useState(false);
+
+    useEffect(() => {
+        if (!isSupabaseConfigured || !supabase) return;
+
+        supabase!.auth.getSession().then(({ data: { session } }) => {
+            if (session?.user) {
+                setUser(session.user);
+                supabase!.rpc('update_user_online', { p_user_id: session.user.id, p_online: true });
+            }
+        });
+
+        const fetchLeaderboard = async () => {
+            const { data } = await supabase!.from('leaderboard_today').select('*').order('today_seconds', { ascending: false });
+            if (data) {
+                setLiveLeaderboard(data);
+                setIsConnected(true);
+            }
+        };
+
+        fetchLeaderboard();
+
+        const channel = supabase!.channel('leaderboard-changes')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'study_sessions' }, fetchLeaderboard)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, fetchLeaderboard)
+            .subscribe();
+
+        // Update online status periodically
+        const interval = setInterval(() => {
+            if (user) supabase!.rpc('update_user_online', { p_user_id: user.id, p_online: true });
+        }, 60000);
+
+        return () => {
+            clearInterval(interval);
+            if (user) supabase!.rpc('update_user_online', { p_user_id: user.id, p_online: false });
+            supabase!.removeChannel(channel);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user?.id]);
 
     const todayKey = new Date().toISOString().split('T')[0];
     const todayData = studyHistory.find((d) => d.date === todayKey);
     const myTodaySeconds = todayData?.totalSeconds || 0;
-    const myWeekSeconds = studyHistory
-        .filter((d) => {
-            const diff = (new Date().getTime() - new Date(d.date).getTime()) / (1000 * 60 * 60 * 24);
-            return diff <= 7;
-        })
-        .reduce((acc, d) => acc + d.totalSeconds, 0);
 
-    // Calculate streak
     let myStreak = 0;
     const sorted = [...studyHistory].sort((a, b) => b.date.localeCompare(a.date));
     for (const d of sorted) {
@@ -79,25 +110,41 @@ export default function LeaderboardPage() {
         else break;
     }
 
-    // Merge user into leaderboard
+    // Merge users
     const allUsers = useMemo(() => {
+        if (isConnected && liveLeaderboard.length > 0) {
+            return liveLeaderboard.map((u) => ({
+                id: u.user_id,
+                name: u.nickname || 'Student',
+                avatar: u.avatar_url || '🧑‍💻',
+                todaySeconds: Number(u.today_seconds),
+                streak: 0, // Would require a separate RPC call to get_study_streak for all, skipping for performance
+                isOnline: Boolean(u.is_online),
+                isMe: user?.id === u.user_id,
+                isImage: String(u.avatar_url).startsWith('http') || String(u.avatar_url).startsWith('data:'),
+            }));
+        }
+
+        // Fallback for guest mode
         const me = {
+            id: 'me',
             name: nickname || 'You',
-            avatar: '⭐',
+            avatar: avatar || '⭐',
             todaySeconds: myTodaySeconds,
-            weekSeconds: myWeekSeconds,
             streak: myStreak,
             isOnline: true,
             isMe: true,
+            isImage: Boolean(avatar && (avatar.startsWith('http') || avatar.startsWith('data:'))),
         };
 
-        const others = SIMULATED_USERS.map((u) => ({ ...u, isMe: false }));
+        const others = SIMULATED_USERS.map((u) => ({ ...u, id: u.name, isMe: false, isImage: false }));
         const combined = [...others, me];
         combined.sort((a, b) => b.todaySeconds - a.todaySeconds);
         return combined;
-    }, [nickname, myTodaySeconds, myWeekSeconds, myStreak]);
+    }, [isConnected, liveLeaderboard, user?.id, nickname, avatar, myTodaySeconds, myStreak]);
 
     const myRank = allUsers.findIndex((u) => u.isMe) + 1;
+    const myData = allUsers.find(u => u.isMe) || { name: 'You', todaySeconds: 0, streak: 0, isImage: false, avatar: '' };
     const onlineCount = allUsers.filter((u) => u.isOnline).length;
 
     return (
@@ -110,7 +157,7 @@ export default function LeaderboardPage() {
                     </p>
                     <h1 className="text-3xl font-bold text-white">Leaderboard</h1>
                     <p className="text-sm text-white/30 mt-1">
-                        {onlineCount} studying now · Updated in real-time
+                        {onlineCount} studying now {isConnected ? '· Live Database' : '· Guest Mode'}
                     </p>
                 </div>
                 <Link
@@ -118,7 +165,7 @@ export default function LeaderboardPage() {
                     className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/60 hover:text-white text-sm transition-all"
                 >
                     <ArrowLeft size={16} />
-                    Study Timer
+                    Timer
                 </Link>
             </motion.div>
 
@@ -128,28 +175,29 @@ export default function LeaderboardPage() {
             >
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl"
+                        <div className="w-12 h-12 rounded-2xl overflow-hidden flex items-center justify-center text-2xl relative shrink-0"
                             style={{ background: 'var(--accent-soft)' }}
                         >
-                            ⭐
+                            {myData.isImage ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={myData.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                            ) : (
+                                myData.avatar || '⭐'
+                            )}
                         </div>
-                        <div>
-                            <p className="text-sm font-semibold text-white">{nickname || 'You'}</p>
-                            <p className="text-xs text-white/30">Your ranking</p>
+                        <div className="min-w-0">
+                            <p className="text-sm font-semibold text-white truncate">{myData.name}</p>
+                            <p className="text-xs text-white/30 truncate">Your ranking</p>
                         </div>
                     </div>
-                    <div className="flex items-center gap-6">
+                    <div className="flex items-center gap-6 shrink-0 ml-4">
                         <div className="text-center">
-                            <p className="text-lg font-bold" style={{ color: 'var(--accent-primary)' }}>#{myRank}</p>
+                            <p className="text-lg font-bold" style={{ color: 'var(--accent-primary)' }}>#{myRank || '-'}</p>
                             <p className="text-[10px] text-white/30">Rank</p>
                         </div>
                         <div className="text-center">
-                            <p className="text-lg font-bold text-white">{formatTime(myTodaySeconds)}</p>
+                            <p className="text-lg font-bold text-white">{formatTime(myData.todaySeconds)}</p>
                             <p className="text-[10px] text-white/30">Today</p>
-                        </div>
-                        <div className="text-center">
-                            <p className="text-lg font-bold text-white">{myStreak}</p>
-                            <p className="text-[10px] text-white/30">Streak</p>
                         </div>
                     </div>
                 </div>
@@ -157,79 +205,89 @@ export default function LeaderboardPage() {
 
             {/* Leaderboard Table */}
             <motion.div variants={item}>
-                <div className="space-y-2">
-                    {allUsers.map((user, idx) => {
-                        const rank = idx + 1;
-                        return (
-                            <motion.div
-                                key={user.name}
-                                initial={{ opacity: 0, x: -10 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                transition={{ delay: idx * 0.04 }}
-                                className={`glass-card p-4 flex items-center gap-4 transition-all hover:scale-[1.01] ${user.isMe ? 'ring-1' : ''
-                                    }`}
-                                style={{
-                                    boxShadow: getRankGlow(rank, 'var(--accent-primary)'),
-                                    ...(user.isMe ? { borderColor: 'var(--accent-primary)', borderWidth: '1px' } : {}),
-                                }}
-                            >
-                                {/* Rank */}
-                                <div className="w-8 flex justify-center">
-                                    {getRankIcon(rank)}
-                                </div>
-
-                                {/* Avatar */}
-                                <div className="relative">
-                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl ${rank <= 3 ? 'bg-white/5' : 'bg-white/[0.02]'
-                                        }`}>
-                                        {user.avatar}
+                {allUsers.length === 0 ? (
+                    <div className="text-center py-12 text-white/30 text-sm">No study sessions recorded today yet. Be the first!</div>
+                ) : (
+                    <div className="space-y-2">
+                        {allUsers.map((u, idx) => {
+                            const rank = idx + 1;
+                            return (
+                                <motion.div
+                                    key={u.id}
+                                    initial={{ opacity: 0, x: -10 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    transition={{ delay: idx * 0.04 }}
+                                    className={`glass-card p-4 flex items-center gap-4 transition-all hover:scale-[1.01] ${u.isMe ? 'ring-1' : ''}`}
+                                    style={{
+                                        boxShadow: getRankGlow(rank, 'var(--accent-primary)'),
+                                        ...(u.isMe ? { borderColor: 'var(--accent-primary)', borderWidth: '1px' } : {}),
+                                    }}
+                                >
+                                    {/* Rank */}
+                                    <div className="w-8 flex justify-center shrink-0">
+                                        {getRankIcon(rank)}
                                     </div>
-                                    {user.isOnline && (
-                                        <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-green-400 border-2 border-[#0a0a0f]" />
-                                    )}
-                                </div>
 
-                                {/* Name */}
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2">
-                                        <p className={`text-sm font-medium truncate ${user.isMe ? '' : 'text-white/70'}`}
-                                            style={user.isMe ? { color: 'var(--accent-primary)' } : {}}
-                                        >
-                                            {user.name} {user.isMe && '(You)'}
-                                        </p>
-                                        {user.isOnline && (
-                                            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-400">
-                                                studying
-                                            </span>
+                                    {/* Avatar */}
+                                    <div className="relative shrink-0">
+                                        <div className={`w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center text-xl ${rank <= 3 ? 'bg-white/5' : 'bg-white/[0.02]'}`}>
+                                            {u.isImage ? (
+                                                // eslint-disable-next-line @next/next/no-img-element
+                                                <img src={u.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                                            ) : (
+                                                u.avatar || <User size={20} className="text-white/40" />
+                                            )}
+                                        </div>
+                                        {u.isOnline && (
+                                            <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-green-400 border-2 border-[#0a0a0f]" />
                                         )}
                                     </div>
-                                    <div className="flex items-center gap-2 mt-0.5">
-                                        <Flame size={10} className="text-orange-400/60" />
-                                        <span className="text-[10px] text-white/25">{user.streak} day streak</span>
-                                    </div>
-                                </div>
 
-                                {/* Study Time */}
-                                <div className="text-right">
-                                    <p className={`text-sm font-mono font-bold ${rank <= 3 ? 'text-white' : 'text-white/60'}`}>
-                                        {formatTime(user.todaySeconds)}
-                                    </p>
-                                    <p className="text-[10px] text-white/20">today</p>
-                                </div>
-                            </motion.div>
-                        );
-                    })}
-                </div>
+                                    {/* Name */}
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <p className={`text-sm font-medium truncate ${u.isMe ? '' : 'text-white/70'}`}
+                                                style={u.isMe ? { color: 'var(--accent-primary)' } : {}}
+                                            >
+                                                {u.name} {u.isMe && '(You)'}
+                                            </p>
+                                            {u.isOnline && (
+                                                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-400 shrink-0">
+                                                    studying
+                                                </span>
+                                            )}
+                                        </div>
+                                        {u.streak > 0 && (
+                                            <div className="flex items-center gap-1.5 mt-0.5">
+                                                <Flame size={10} className="text-orange-400/80" />
+                                                <span className="text-[10px] text-white/30">{u.streak}d</span>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Study Time */}
+                                    <div className="text-right shrink-0 ml-4">
+                                        <p className={`text-sm font-mono font-bold ${rank <= 3 ? 'text-white' : 'text-white/60'}`}>
+                                            {formatTime(u.todaySeconds)}
+                                        </p>
+                                        <p className="text-[10px] text-white/20">today</p>
+                                    </div>
+                                </motion.div>
+                            );
+                        })}
+                    </div>
+                )}
             </motion.div>
 
             {/* Info Note */}
-            <motion.div variants={item} className="mt-6 p-4 rounded-xl bg-white/[0.02] border border-white/5">
-                <p className="text-xs text-white/25 text-center">
-                    📊 Rankings refresh in real-time when connected. Currently showing simulated peers.
-                    <br />
-                    Connect Supabase to see live leaderboards with actual UTHM students.
-                </p>
-            </motion.div>
+            {!isConnected && (
+                <motion.div variants={item} className="mt-6 p-4 rounded-xl bg-white/[0.02] border border-white/5">
+                    <p className="text-xs text-white/25 text-center">
+                        📊 Showing simulated peers (Guest Mode).<br />
+                        Sign in via Profile to see live leaderboards with actual UTHM students.
+                    </p>
+                </motion.div>
+            )}
         </motion.div>
     );
 }

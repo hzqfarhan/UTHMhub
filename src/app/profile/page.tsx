@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, Variants } from 'framer-motion';
-import { User, Camera, Save, Check, AlertTriangle, LogIn } from 'lucide-react';
+import { User, Camera, Save, Check, AlertTriangle, LogIn, LogOut } from 'lucide-react';
 import { useLocalStorage } from '@/hooks/use-local-storage';
 import { useTheme } from '@/hooks/use-theme';
 import { FacultyTheme } from '@/types';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase/client';
 
 const container: Variants = {
     hidden: { opacity: 0 },
@@ -51,7 +52,7 @@ async function compressImage(file: File, maxWidth = 256, quality = 0.7): Promise
     });
 }
 
-// SVG icons for Google and Apple
+// SVG icons for Google
 function GoogleIcon() {
     return (
         <svg width="18" height="18" viewBox="0 0 24 24">
@@ -71,6 +72,52 @@ export default function ProfilePage() {
     const [authMsg, setAuthMsg] = useState('');
     const { theme, setTheme } = useTheme();
     const fileRef = useRef<HTMLInputElement>(null);
+
+    // Supabase Auth State
+    const [user, setUser] = useState<any>(null);
+    const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+
+    useEffect(() => {
+        if (!isSupabaseConfigured || !supabase) {
+            setIsLoadingAuth(false);
+            return;
+        }
+
+        // Fetch initial session
+        supabase!.auth.getSession().then(({ data: { session } }) => {
+            if (session?.user) {
+                setUser(session.user);
+                fetchProfile(session.user.id);
+            }
+            setIsLoadingAuth(false);
+        });
+
+        // Listen for auth changes
+        const { data: { subscription } } = supabase!.auth.onAuthStateChange((_event, session) => {
+            if (session?.user) {
+                setUser(session.user);
+                fetchProfile(session.user.id);
+            } else {
+                setUser(null);
+            }
+            setIsLoadingAuth(false);
+        });
+
+        return () => subscription.unsubscribe();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    async function fetchProfile(userId: string) {
+        if (!supabase) return;
+        const { data, error } = await supabase!.from('users').select('*').eq('id', userId).single();
+        if (data) {
+            if (data.name) setNickname(data.name);
+            if (data.avatar_url) setAvatar(data.avatar_url);
+            if (data.theme) setTheme(data.theme as FacultyTheme);
+        } else if (error) {
+            console.error('Error fetching profile:', error);
+        }
+    }
 
     async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
         const file = e.target.files?.[0];
@@ -94,14 +141,42 @@ export default function ProfilePage() {
         }
     }
 
-    function handleSave() {
+    async function handleSave() {
+        if (user && supabase) {
+            const { error } = await supabase!.from('users').update({
+                name: nickname,
+                avatar_url: avatar,
+                theme: theme
+            }).eq('id', user.id);
+
+            if (error) {
+                setErrorMsg('Failed to sync to cloud: ' + error.message);
+                return;
+            }
+        }
         setSavedMsg('Profile saved!');
         setTimeout(() => setSavedMsg(''), 2000);
     }
 
     function handleOAuth(provider: string) {
-        setAuthMsg(`${provider} sign-in requires Supabase credentials. Add them to .env.local to enable OAuth.`);
-        setTimeout(() => setAuthMsg(''), 5000);
+        if (!isSupabaseConfigured || !supabase) {
+            setAuthMsg(`${provider} sign-in requires Supabase credentials. Add them to .env.local.`);
+            setTimeout(() => setAuthMsg(''), 5000);
+            return;
+        }
+
+        supabase!.auth.signInWithOAuth({
+            provider: provider.toLowerCase() as any,
+            options: {
+                redirectTo: window.location.origin + '/profile'
+            }
+        });
+    }
+
+    function handleSignOut() {
+        if (supabase) {
+            supabase!.auth.signOut();
+        }
     }
 
     return (
@@ -119,11 +194,12 @@ export default function ProfilePage() {
                     {/* Avatar */}
                     <div className="flex items-center gap-5 mb-6">
                         <div
-                            className="relative w-20 h-20 rounded-2xl overflow-hidden cursor-pointer group"
+                            className="relative w-20 h-20 rounded-2xl overflow-hidden cursor-pointer group shrink-0"
                             onClick={() => fileRef.current?.click()}
                             style={{ background: avatar ? 'transparent' : 'var(--accent-soft)' }}
                         >
                             {avatar ? (
+                                // eslint-disable-next-line @next/next/no-img-element
                                 <img src={avatar} alt="Avatar" className="w-full h-full object-cover" />
                             ) : (
                                 <div className="w-full h-full flex items-center justify-center">
@@ -134,8 +210,8 @@ export default function ProfilePage() {
                                 <Camera size={20} className="text-white" />
                             </div>
                         </div>
-                        <div>
-                            <p className="text-sm text-white/70 font-medium">{nickname || 'Set your nickname'}</p>
+                        <div className="min-w-0">
+                            <p className="text-sm text-white/70 font-medium truncate">{nickname || 'Set your nickname'}</p>
                             <p className="text-xs text-white/30 mt-1">Click avatar to change photo</p>
                             <p className="text-[10px] text-white/20">Max 2.5 MB · Auto-compressed</p>
                         </div>
@@ -170,42 +246,74 @@ export default function ProfilePage() {
 
                 {/* Right Column */}
                 <div className="space-y-6">
-                    {/* Sign In Options */}
+                    {/* Sign In Options / Logged In State */}
                     <motion.div variants={item} className="glass-card p-6">
                         <div className="flex items-center gap-2 mb-4">
                             <LogIn size={16} className="text-white/40" />
-                            <h2 className="text-sm font-semibold text-white/60">Sign In & Sync</h2>
+                            <h2 className="text-sm font-semibold text-white/60">Cloud Sync & Leaderboard</h2>
                         </div>
 
-                        <p className="text-xs text-white/30 mb-5 leading-relaxed">
-                            Sign in to sync your data across devices, appear on leaderboards, and unlock cloud backup.
-                        </p>
-
-                        {authMsg && (
-                            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-4">
-                                <p className="text-xs text-amber-400">{authMsg}</p>
+                        {isLoadingAuth ? (
+                            <div className="animate-pulse h-12 bg-white/5 rounded-xl" />
+                        ) : user ? (
+                            <div>
+                                <div className="flex items-center gap-3 p-3 bg-white/5 rounded-xl border border-white/10 mb-4">
+                                    <div className="w-10 h-10 rounded-full overflow-hidden bg-white/10 shrink-0">
+                                        {user.user_metadata?.avatar_url || avatar ? (
+                                            // eslint-disable-next-line @next/next/no-img-element
+                                            <img src={avatar || user.user_metadata?.avatar_url} alt="Profile" className="w-full h-full object-cover" />
+                                        ) : (
+                                            <div className="w-full h-full flex items-center justify-center">
+                                                <User size={20} className="text-white/40" />
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-sm text-white font-medium truncate">{user.email}</p>
+                                        <p className="text-xs text-green-400">Connected & Syncing</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={handleSignOut}
+                                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-medium transition-all"
+                                >
+                                    <LogOut size={14} />
+                                    Sign Out
+                                </button>
                             </div>
+                        ) : (
+                            <>
+                                <p className="text-xs text-white/30 mb-5 leading-relaxed">
+                                    Sign in to sync your data across devices, appear on leaderboards, and unlock cloud backup.
+                                </p>
+
+                                {authMsg && (
+                                    <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-4">
+                                        <p className="text-xs text-amber-400">{authMsg}</p>
+                                    </div>
+                                )}
+
+                                <div className="space-y-3">
+                                    {/* Google Sign In */}
+                                    <button
+                                        onClick={() => handleOAuth('Google')}
+                                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-white/20 transition-all text-sm"
+                                    >
+                                        <GoogleIcon />
+                                        <span className="text-white/80 font-medium">Continue with Google</span>
+                                    </button>
+                                </div>
+
+                                <div className="mt-4 flex gap-2 items-center">
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20 shrink-0">
+                                        Guest Mode Active
+                                    </span>
+                                    <span className="text-[10px] text-white/20">
+                                        Data stays on this device
+                                    </span>
+                                </div>
+                            </>
                         )}
-
-                        <div className="space-y-3">
-                            {/* Google Sign In */}
-                            <button
-                                onClick={() => handleOAuth('Google')}
-                                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-white/20 transition-all text-sm"
-                            >
-                                <GoogleIcon />
-                                <span className="text-white/80 font-medium">Continue with Google</span>
-                            </button>
-                        </div>
-
-                        <div className="mt-4 flex gap-2 items-center">
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20">
-                                Guest Mode · Active
-                            </span>
-                            <span className="text-[10px] text-white/20">
-                                All features work offline
-                            </span>
-                        </div>
                     </motion.div>
 
                     {/* Theme & Preferences */}
