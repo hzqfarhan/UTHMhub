@@ -25,6 +25,8 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
+import { Analytics } from "@vercel/analytics/next";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -40,6 +42,7 @@ export default function RootLayout({
         <div className="fixed bottom-2 right-3 text-[10px] text-white/20 select-none pointer-events-none z-[9999] tracking-widest font-mono">
           hakhyun
         </div>
+        <Analytics />
       </body>
     </html>
   );
