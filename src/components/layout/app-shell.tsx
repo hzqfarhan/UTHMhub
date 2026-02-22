@@ -1,11 +1,21 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Sidebar from '@/components/layout/sidebar';
 import PomodoroTimer from '@/components/features/pomodoro-timer';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase/client';
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
     const [pomodoroOpen, setPomodoroOpen] = useState(false);
+
+    useEffect(() => {
+        if (isSupabaseConfigured && supabase) {
+            // Instantiate Supabase globally on mount to intercept OAuth hash fragments
+            // in the URL if the user is redirected to the root or any other page.
+            const { data: { subscription } } = supabase.auth.onAuthStateChange(() => { });
+            return () => subscription.unsubscribe();
+        }
+    }, []);
 
     return (
         <>
