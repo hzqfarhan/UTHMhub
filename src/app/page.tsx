@@ -1,65 +1,201 @@
-import Image from "next/image";
+'use client';
 
-export default function Home() {
+import { motion, Variants } from 'framer-motion';
+import {
+  GraduationCap,
+  Calendar,
+  Flame,
+  Sparkles,
+  TrendingUp,
+  Clock,
+} from 'lucide-react';
+import { useLocalStorage } from '@/hooks/use-local-storage';
+import { Semester, StudyStreak } from '@/types';
+import { calculateCGPA } from '@/lib/gpa-utils';
+import { ACADEMIC_EVENTS, getDaysUntil } from '@/lib/calendar-data';
+import CGPAChart from '@/components/features/cgpa-chart';
+
+const motivationalMessages = [
+  "The expert in anything was once a beginner. 🌟",
+  "Small progress is still progress. Keep going! 💪",
+  "Your future self will thank you for studying today. 📚",
+  "Success is the sum of small efforts repeated daily. ✨",
+  "Believe in yourself — you're doing great! 🎯",
+  "Every hour you study brings you closer to your dream. 🚀",
+  "Consistency beats intensity. Stay steady! 🎓",
+  "The only limit to our realization of tomorrow is our doubts of today. 💡",
+];
+
+const container: Variants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.08 },
+  },
+};
+
+const item: Variants = {
+  hidden: { opacity: 0, y: 20 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } },
+};
+
+export default function DashboardPage() {
+  const [semesters] = useLocalStorage<Semester[]>('uthmhub-semesters', []);
+  const [streak] = useLocalStorage<StudyStreak>('uthmhub-streak', {
+    currentStreak: 0,
+    longestStreak: 0,
+    lastActiveDate: '',
+  });
+
+  const cgpa = calculateCGPA(semesters);
+  const now = new Date();
+
+  // Find next upcoming event
+  const upcomingEvents = ACADEMIC_EVENTS
+    .filter((e) => new Date(e.startDate) > now)
+    .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
+
+  const nextEvent = upcomingEvents[0];
+  const daysUntilNext = nextEvent ? getDaysUntil(nextEvent.startDate) : 0;
+
+  // Random motivational message (based on day)
+  const dayIndex = now.getDate() % motivationalMessages.length;
+  const message = motivationalMessages[dayIndex];
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <motion.div variants={container} initial="hidden" animate="show">
+      {/* Header */}
+      <motion.div variants={item} className="mb-8">
+        <p className="text-sm text-white/40 uppercase tracking-widest mb-1">Dashboard</p>
+        <h1 className="text-3xl font-bold text-white">
+          Welcome back <span className="gradient-text">Student</span>
+        </h1>
+      </motion.div>
+
+      {/* Top Stats Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        {/* CGPA Card */}
+        <motion.div variants={item} className="glass-card glow-card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-sm text-white/40">Current CGPA</span>
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'var(--accent-soft)' }}>
+              <GraduationCap size={16} style={{ color: 'var(--accent-primary)' }} />
+            </div>
+          </div>
+          <motion.p
+            className="text-4xl font-bold gradient-text"
+            initial={{ scale: 0.5 }}
+            animate={{ scale: 1 }}
+            transition={{ type: 'spring', stiffness: 200, delay: 0.3 }}
+          >
+            {cgpa > 0 ? cgpa.toFixed(2) : '—'}
+          </motion.p>
+          <p className="text-xs text-white/30 mt-2">
+            {semesters.length > 0 ? `${semesters.length} semester${semesters.length > 1 ? 's' : ''} recorded` : 'No data yet'}
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+        </motion.div>
+
+        {/* Next Event Countdown */}
+        <motion.div variants={item} className="glass-card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-sm text-white/40">Next Event</span>
+            <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
+              <Calendar size={16} className="text-blue-400" />
+            </div>
+          </div>
+          {nextEvent ? (
+            <>
+              <p className="text-2xl font-bold text-white">
+                {daysUntilNext} <span className="text-sm font-normal text-white/40">days</span>
+              </p>
+              <p className="text-xs text-white/50 mt-2 line-clamp-1">{nextEvent.title}</p>
+            </>
+          ) : (
+            <p className="text-lg text-white/30">No upcoming events</p>
+          )}
+        </motion.div>
+
+        {/* Study Streak */}
+        <motion.div variants={item} className="glass-card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-sm text-white/40">Study Streak</span>
+            <div className="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center">
+              <Flame size={16} className="text-orange-400" />
+            </div>
+          </div>
+          <p className="text-2xl font-bold text-white">
+            {streak.currentStreak} <span className="text-sm font-normal text-white/40">days</span>
+          </p>
+          <p className="text-xs text-white/30 mt-2">
+            Best: {streak.longestStreak} days
+          </p>
+        </motion.div>
+
+        {/* Semesters Count */}
+        <motion.div variants={item} className="glass-card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-sm text-white/40">Total Credits</span>
+            <div className="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center">
+              <TrendingUp size={16} className="text-green-400" />
+            </div>
+          </div>
+          <p className="text-2xl font-bold text-white">
+            {semesters.reduce((sum, s) => sum + s.subjects.reduce((ss, sub) => ss + sub.creditHour, 0), 0)}
+          </p>
+          <p className="text-xs text-white/30 mt-2">credit hours completed</p>
+        </motion.div>
+      </div>
+
+      {/* Middle Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
+        {/* CGPA Progress Chart */}
+        <motion.div variants={item} className="glass-card p-6 lg:col-span-2">
+          <div className="flex items-center gap-2 mb-4">
+            <TrendingUp size={16} style={{ color: 'var(--accent-primary)' }} />
+            <h2 className="text-sm font-semibold text-white/70">CGPA Progress</h2>
+          </div>
+          <CGPAChart semesters={semesters} />
+        </motion.div>
+
+        {/* Upcoming Timeline */}
+        <motion.div variants={item} className="glass-card p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Clock size={16} style={{ color: 'var(--accent-primary)' }} />
+            <h2 className="text-sm font-semibold text-white/70">Upcoming Events</h2>
+          </div>
+          <div className="space-y-3">
+            {upcomingEvents.slice(0, 4).map((event) => {
+              const days = getDaysUntil(event.startDate);
+              return (
+                <div key={event.id} className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.02] border border-white/5">
+                  <div
+                    className="w-2 h-2 rounded-full shrink-0"
+                    style={{ background: event.color }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-white/80 truncate">{event.title}</p>
+                    <p className="text-xs text-white/30">
+                      {days > 0 ? `in ${days} days` : 'Today'}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+            {upcomingEvents.length === 0 && (
+              <p className="text-sm text-white/30 text-center py-4">No upcoming events</p>
+            )}
+          </div>
+        </motion.div>
+      </div>
+
+      {/* Motivational Message */}
+      <motion.div
+        variants={item}
+        className="glass-card p-6 text-center"
+      >
+        <Sparkles size={20} className="mx-auto mb-3" style={{ color: 'var(--accent-primary)' }} />
+        <p className="text-lg text-white/70 italic">{message}</p>
+      </motion.div>
+    </motion.div>
   );
 }

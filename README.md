@@ -1,36 +1,93 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# UTHMhub — UTHM Student Companion
+
+A production-ready Progressive Web App (PWA) for UTHM university students. Your daily academic productivity companion.
+
+## Features
+
+- **GPA Calculator** — Add semesters, subjects, calculate GPA & CGPA
+- **GPA Predictor** — Target CGPA, min grades per subject, final exam calculator
+- **Smart Takwim** — Academic calendar with UTHM Semester II 2025/2026 events
+- **Dashboard** — CGPA overview, countdown, study streak, progress chart
+- **Quick Links** — One-click access to UTHM portals
+
+## Tech Stack
+
+- **Next.js 14+** (App Router, TypeScript)
+- **TailwindCSS** + custom glassmorphism design system
+- **Framer Motion** for animations
+- **Recharts** for CGPA progress graph
+- **Supabase** (scaffolded — works offline with localStorage)
+- **PWA** — installable with offline support
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+- Node.js 18+
+- npm
+
+### Installation
 
 ```bash
+# Clone the repo
+git clone <your-repo-url>
+cd hubuthm
+
+# Install dependencies
+npm install
+
+# Copy environment file
+cp .env.example .env.local
+
+# Start dev server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Supabase (Optional)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+To enable cloud sync and auth:
 
-## Learn More
+1. Create a project at [supabase.com](https://supabase.com)
+2. Run `src/lib/supabase/schema.sql` in the SQL editor
+3. Copy your project URL and anon key to `.env.local`:
+   ```
+   NEXT_PUBLIC_SUPABASE_URL=your-url
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=your-key
+   ```
 
-To learn more about Next.js, take a look at the following resources:
+## Project Structure
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+src/
+├── app/                    # Next.js App Router pages
+│   ├── page.tsx           # Dashboard
+│   ├── calculator/        # GPA Calculator
+│   ├── predictor/         # GPA Predictor
+│   ├── calendar/          # Academic Calendar
+│   └── quick-links/       # Quick Access Hub
+├── components/
+│   ├── layout/            # Sidebar, Navbar
+│   └── features/          # CGPA Chart, etc.
+├── hooks/                 # Custom React hooks
+├── lib/                   # Utilities & data
+│   ├── gpa-utils.ts       # GPA calculation
+│   ├── predictor-utils.ts # Prediction algorithms
+│   ├── calendar-data.ts   # Academic events
+│   └── supabase/          # Supabase client & schema
+└── types/                 # TypeScript interfaces
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Deployment
 
-## Deploy on Vercel
+Optimized for **Vercel**:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+npm run build
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Or deploy directly via the Vercel dashboard.
+
+## License
+
+Built for UTHM students. MIT License.
